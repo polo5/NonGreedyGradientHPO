@@ -1,0 +1,511 @@
+
+
+#####################################################
+######## NO MOM/WD MAKES HYPERGRADS BLOW UP WHEN USING BN
+#####################################################
+
+Is this due to floating type?
+
+BN-mom0.0-wd0.0-nb50
+
+---------- float32:
+
+LR GRADS:  ['29810.479', '-181445.594', '54260.789', '-163958.297', '-16099.822', '-68716.422', '104233.234', '-34687.148', '-27159.365', '-43180.051', '122544.930', '-137005.750', '-7905.278', '18836.023', '-119473.852', '-24136.830', '27144.738', '384913.906', '102507.836', '58415.402', '-34772.195', '-65916.820', '-69146.047', '-12082.532', '20494.791', '37681.902', '2311.376', '-4734.898', '2848.114', '3655.260', '974.630', '388.980', '331.364', '114.487', '-61.077', '157.085', '116.089', '85.142', '47.212', '31.968', '-7.082', '-92.849', '8.376', '-93.530', '-18.084', '-16.280', '-10.074', '-3.416', '0.668', '1.042']
+
+	LR GRADS:  ['-3790.816', '-1905.300', '-2865.347', '1456.921', '1404.731', '1245.894', '647.407', '-2566.939', '-2180.174', '-1790.525', '33.703', '501.937', '109.229', '87.169', '23.320', '-1.228', '25.815', '40.820', '10.553', '7.546', '5.414', '8.002', '1.667', '0.044', '-14.470', '-3.623', '-2.532', '-0.581', '0.270', '-0.541', '-2.214', '0.019', '-1.088', '-0.853', '4.389', '2.432', '0.099', '-0.261', '0.260', '0.107', '-0.123', '0.394', '-0.228', '-1.217', '-0.715', '-0.164', '-0.178', '-0.238', '-0.057', '-0.083']
+
+
+---------- float64:
+
+
+LR GRADS:  ['12.213', '2.184', '0.424', '-9.387', '-2.044', '-6.832', '-0.699', '-13.518', '-4.805', '8.047', '-5.943', '-2.664', '-7.445', '-0.388', '-2.679', '4.533', '1.347', '0.048', '0.161', '-1.841', '-7.148', '1.117', '-2.391', '0.011', '-20.402', '-0.638', '3.899', '45.062', '36.488', '-37.149', '-13.390', '106.149', '33.787', '0.348', '-2.342', '-40.602', '-77.654', '-104.580', '6.956', '-41.004', '-10.270', '-7.519', '60.028', '14.519', '-1.940', '-8.077', '-5.170', '-0.290', '1.952', '2.384']
+
+LR GRADS:  ['-0.464', '-0.374', '-0.008', '-0.052', '-0.291', '-0.529', '-0.368', '0.326', '-0.142', '0.400', '0.907', '0.230', '-0.117', '-0.503', '-0.165', '-0.292', '0.145', '3.804', '3.249', '0.407', '-0.745', '-0.026', '0.578', '0.297', '-0.673', '-0.360', '-1.453', '-1.063', '0.477', '0.167', '-0.332', '0.517', '-0.060', '0.171', '-1.306', '-8.457', '-5.777', '7.649', '-0.617', '-0.791', '-5.103', '-1.701', '-2.513', '-0.108', '0.478', '2.053', '0.304', '-0.331', '-0.107', '1.113']
+
+
+Still high variance but norm is much smaller indeed.
+
+
+
+
+
+#####################################################
+######## CPU AND GPU DIFFERENT HYPERVAR BEHAVIOUR
+#####################################################
+
+ntb10, perturb val: much higher var on GPU than CPU
+We observe very similar weights/grads but very different hypergrads
+
+is this CPU vs GPU?
+-> use CPU on cluster, get half way var:
+
+local CPU -> 6%
+cdt CPU -> 28%
+cdt GPU -> 1000%
+
+wtf?! Could be a huge issue because it affects figure 1 and figure 2.
+
+
+delete cdt folder + copy local SVHN to cdt:
+get exactly the same: cdt CPU -> 28%
+
+
+is this pytoch_cpu only? 
+
+
+
+#################
+### GRAD TEST ###
+#################
+
+are gradients even the same ?
+
+grad test file on local CPU:
+
+Finite diffe: [0.3223799893703472, 0.1701406349141621, -0.27014959158577767, 0.11576171132787749, -0.29845261817484925] -- time: 31.523825645446777s
+Reverse mode: [0.32237982302041407, 0.17014061227198687, -0.2701495477836476, 0.11576172513537836, -0.2984525013448704] -- time: 4.225664138793945s
+Forward mode: [0.3223798230204081, 0.1701406122719884, -0.27014954778364686, 0.11576172513537777, -0.2984525013448689] -- time: 
+4.86249041557312s
+
+grad test file on cdt CPU:
+
+Finite diffe: [0.3223798783480447, 0.1701406349141621, -0.27014965819915915, 0.11576171132787749, -0.2984525071525468] -- time: 
+64.4072334766388s
+Reverse mode: [0.3223798230203514, 0.17014061227198476, -0.27014954778360845, 0.11576172513538795, -0.2984525013448637] -- time: 8.800758838653564s                                       
+Forward mode: [0.32237982302033813, 0.17014061227198282, -0.2701495477836048, 0.115761725135388, -0.2984525013448631] -- time: 13.070618867874146s      
+
+
+grad test on cdt GPU:
+
+Finite diffe: [0.32237978953020274, 0.1701406127097016, -0.2701495471768567, 0.115761689123417, -0.29845255156146777] -- time: 53.335598945617676s                                        
+Reverse mode: [0.3223798230204344, 0.17014061227197413, -0.27014954778363354, 0.11576172513538191, -0.2984525013448706] -- time: 4.809934377670288s                                       
+Forward mode: [0.32237982302043316, 0.17014061227197702, -0.2701495477836348, 0.11576172513538302, -0.2984525013448705] -- time: 5.005192041397095s 
+
+---------------------------------------------------
+So all the same in float64. Try float 32:
+---------------------------------------------------
+
+grad test file on local CPU:
+
+Reverse mode: [-0.004573658108711243, -1.4158997535705566, -0.010041959583759308, 0.14455287158489227, 0.09724588692188263] -- time: 3.249805450439453s
+Forward mode: [-0.004575446248054504, -1.415900468826294, -0.010042130947113037, 0.1445528268814087, 0.09724578261375427] -- time: 3.7041144371032715s
+
+grad test file on cdt CPU:
+
+Reverse mode: [0.1916937530040741, -1.5728466510772705, 0.0755496546626091, 0.21575677394866943, 0.10171486437320709] -- time: 10.748806715011597s                                        
+Forward mode: [0.1916961371898651, -1.5728408098220825, 0.07554849237203598, 0.2157554179430008, 0.10171353816986084] -- time: 4.742954730987549s   
+
+grad test on cdt GPU:
+
+Reverse mode: [0.19412684440612793, -1.5738822221755981, 0.07612967491149902, 0.21610446274280548, 0.10272674262523651] -- time: 7.383131265640259s                                       
+Forward mode: [0.19412685930728912, -1.5738747119903564, 0.0761280506849289, 0.21610358357429504, 0.10272753983736038] -- time: 9.165270805358887s  
+
+
+Not the same! Also cdt cpu and gpu slightly different so could explain divergence for 10 steps above?
+
+
+
+Do we get a better stability in float 64?
+Original hypervariance code did not actually set anything to float64.
+
+
+
+float32 SEED 3 SAME FILE:
+locally: val: 5,  train: 906, weights: 64,   hypers: 28
+cpu cdt: val: 17, train: 295, weights: 237,  hypers: 31
+gpu cdt: val: 5, train: 598, weights: 28     hypers: 60
+
+So it seems seeds was to blame after all? Here gpu seems very reasonable
+The only thing that changed was the seed + the way we launch the file.
+Try to launch the file by passing arguments again to make sure it's the seed:
+
+
+we get val: 7 so SOMETHING has changed in the way we launch jobs..?
+All training and val images are the same. Could be a different GPU? Doubt it.
+
+
+float64 SEED 3 SAME FILE:
+locally normal pytorch: val: 6,  train: 20, weights: 16,   hypers: 14
+cpu cdt: doesn't run.. probably because cpu is used by lots of other gpus
+gpu cdt: val: , train: 20, weights:16    hypers: 14
+
+SO IN FLOAT64 WE GET THE SAME VAR ON CPU LOCALLY AND ON GPU ON CDT
+
+Also checked that pytorch-cpu and pytorch locally give same hypergrads.
+
+
+
+
+----------------------
+### TRAIN VAL
+----------------------
+Almost the same on cdt and locally. 
+
+
+
+
+
+
+
+----------------------
+### MEMORY LIMITATIONS
+----------------------
+
+If we run everything in float64 how limited are we by memory?
+
+float32:
+230 batches of size 128 --> 5.4GB
+470 batches of size 128 --> 9.5GB
+
+float64:
+230 batches of size 128 --> 9.7GB
+
+
+
+
+
+
+#####################################################
+######## SOME RUNS RUN OUT OF MEMORY IN HYPERVARIANCE GRID SEARCH
+#####################################################
+
+
+For instance didn't run:
+RHV_SVHN_LeNet_nBN_ReLU_nb470_nc1_nhpc-1_nruns50_tbs128_vbs128pert-train_lr_initxavier-1.0_norm1.0_iSGD_lr0.0_mom0.9_wd0.0005_S0
+
+On CPU memory grows for first run and then stays there as wanted
+Could it be that the maximum number of batches on SVHN is smaller because LeNet32 takes more space in memory?
+
+SVHN nc1 470 batches tbs128
+ train: memory grows to 9275MB
+ weights: memory grows to 9275MB as well
+
+ 940 tbs64
+ weights: 9545,
+
+240 tbs256
+weights: 9163
+
+--------
+first order: SVHN nc1 470 batches only 1.3GB shows on nvidia-smi
+
+
+
+
+
+
+#####################################################
+######## RETRAIN WORSE THAN META TRAIN (LEARN ALL)
+#####################################################
+
+Doesn't seem to happen for full 30 runs of 50 epochs though,
+which is mostly what we care about.
+
+
+
+
+
+
+#####################################################
+######## FashionMNIST better in learn_all than reverse_mode
+#####################################################
+
+
+- MNIST on disk inplace?
+- Probably because learn_all gives 85% as wanted on CPU
+
+
+
+
+
+
+
+#####################################################
+######## EXPLODING OUTER STEP FOR ALL CHUNKS
+#####################################################
+In many runs (e.g run 6 noBN nc5) one outer step has exploding gradients across all chunks. This is very strange. Each chunk has a different initialization, because it inherits the weights from the last outer step of the previous chunk. So it would mean that somehow, at each point during training, taking k hypergradient steps would lead to a learning rate that is at a bifurcation point for that chunk.
+
+Note: Finding a source of different bifurcation points could be a cool extension to do ensembles without the need to retrain the entire network.
+
+
+
+
+
+
+
+
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+##################################################################################################
+
+
+#####################################################
+######## LEARN_ALL MUCH SLOWER THAN OLDER CODE (SOLVED)
+#####################################################
+- We observe a x10 slow down on new code for some reason
+- detaching?
+- clamping?
+- can't see a different on CPU LeNet MNIST 1 run
+- GPU 3 epochs 3 hypers 2 runs:
+	- old: 1m08s, 1m56s, 2m52s --- 1m07s, 2m02s, 2m53
+	- new: 1m24s, 2m43s, 4m12s --- 1m23s, 2m46s, 4m22
+
+- So slows down more and more as we do more epochs, slow down by 1.2, 1.4, 1.5
+- COuld explain why for 50 epochs we get a huge slow down? We're still far from x10 though
+
+- new no clipping: 1m23, 2m45s, 4m22
+- Z_requies_grad was True by mistake in new code. 
+- Fixing it makes it faster but still not as fast:
+ 	-new: 1m23, 2m22, 3m34s
+
+- Probably something slower was introduced in recent codebase, not just this new file
+- Z_lr seems to be the same in 2 version
+- NO: it's just that val size was different so more train batches in second case
+- when fixed we have:
+	- old: 1m23, 2m25, 3m31
+	- new: 1m21, 2m19, 3m27
+
+- we do notice that lr calc is 15% faster than mom/wd
+
+- ALSO n_workers help:
+- 0: first 10 epoch = 35s, next 10: 55s
+- 1: first 10 epoch = 26s, next 10: 48s
+- 2/3: first 10 epoch = 25s, next 10: 48s
+
+-------------------------- CDT CLUSTER ------------------------
+
+CDT cluster is still slower that 2 hours per run as observed in old logs
+Test same code as dice:
+
+- old: 1m11, 2m15, 3m25 (TITANX)
+- new: 1m11, 2m17, 
+
+- old: 3m21 .. (TESLA)
+- new: 3m21s, ... takes ages (TESLA K40)
+
+
+same in interactive session.
+
+
+---------
+
+Look at outputs of all files. COuld be misleading because some experiments only learn 2 vars
+and not everything seems to go in out file.
+
+e0-10:  48s  / 1m13 / 1m42
+e10-20: 1m32 / 2m21 / 
+e20-30: 2m15 / 3m30 /
+e30-40: 3m05 / 4m38 /
+e40-50: 3m47 /      / 8m 
+
+last col = probably bad gpu, one run much slower than other even though same args
+
+
+total lr-mom-wd = 10*(73+141+210+278+340)/(60*60) = 2.9 hours
+so 30 runs would be at least 3d 15h which makes sense because it must be 3 times slower than learning just lr
+
+total lr-mom or lr-wd = 10*(48+93+135+185+227)/(60*60) = 1.91 hours 
+i.e 2d 9h for 30 runs
+
+If we learn 4 hypers instead in theory this could get us to:
+lr-mom-wd = 13*(73+141+210+278)/(60*60) = 2.53 hours
+i.e 3d 4h so not a lot faster than 5 hypers
+
+
+----------
+
+debug for 5 epochs, 5 hypers learn mom-lr-wd TTIANX new. How much time goes into other stuff than epochs (e.g. validation grad)?
+
+--> 1m11, 2m16, 3m24, 4m32, 5m39 
+
+--> 2 runs of these is performed in 35 minutes in actual time
+
+Just from the epoch time we expect (71+136+204+272+339)*2/60=34 minutes so no evidence that validation etc. takes lots of time
+
+
+----------
+
+debug for 5 epochs, 5 hypers learn lr-wd TTIANX new
+50s, 1m31, 2m17, 3m03, 3m48  ------ so (apart from first epoch) learning 2 hypers instead of 3 does take 2 thirsds of the time!
+in main code we see lr-wd same time as lr-mom
+
+---------
+
+OLD RUN WAS PROBABLY FASTER (2h15/run instead of 2h55) because it was on RTX 2080 (bru/lap) which has a bit more cores than TitanX, esp if Ti
+Also Titan X GTX is much slower than Titan X Nvidia which explains the one bad run we have.
+charles11 to charles14 have a mix of GeForce GTX Titan X and GeForce Titan X (Pascal)
+apollos have V100s so probably the best to use.
+
+
+
+
+
+
+#####################################################
+######## DISENTANGLED SGD HYPERS DON'T SEEM HELPFUL (SOLVED)
+#####################################################
+
+- mom=0.0 should give same result for sgd and sgd_disentangled: we diverge after a few steps though, we found that python + operation and .add_ don't give the same results over time by a bit
+- 1 epoch of FashionMNIST disentangled. mom=0.0 -> 86.0%, mom=0.2 -> 85.7%, mom=0.5 -> 85.6%, mom=0.99 -> 78.6%
+- probably only matters for lots of epochs where we take the risk of overfitting? No, even regular mom & wd don't matter for FashionMNIST/SVHN
+- mom/wd do help a bit on CIFAR-10
+
+
+#####################################################
+######## VAL VS TEST & RETRAIN (SOLVED)
+#####################################################
+
+For FashionMNIST horizon=500 we get > 80% for all last validation steps but only 67% for the whole test set. The retrain test acc is also > 80%, so the problem is with the test acc computed at the end of meta training. This doesn't seem to happen when horizon is smaller or outer lr is tiny..?
+
+We couldn't be overfitting the validation since we're as high on test in retrain. Also same behaviour (even worse) observed when each val loss is calculated in .eval() mode.
+
+SVHN 468, when we calculate test_acc along each val acc, we get test_acc = val_acc = 82%.
+When we calculate at the very end we get meta test = 63
+
+When using BN, for exactly the same test batch, and exactly the same weights, self.classifier gives very different logits.
+
+SOLN: This is because we are running through data in train mode to check if validation has improved, and this updates running mean/var. So performance drop is just due to evaluating weights t1 (trained using running stats s1) with running stats t2. So there is a mismatch since stats have changed along with new weights but we use the old weights and the new stats. Discard last meta test acc as it's not relevant and misleading.
+
+Are we losing much by not taking into account how running mean/var is calculated? Antreas used per step gamma/beta but that's different than running mean var. We know that running mean/var depends on batch + weights for previous layer, so weights from step i<T affect the running mean/var at step T, even in .train() mode. Conversely, running stats at step i<T affect weights at step T. So when calculating
+ In .eval() mode the running mean/vars also
+
+
+
+#####################################################
+######## COLLAPSING VAL FOR MANY OUTER STEPS (PROB SOLVED: not clearing hypergrads)
+#####################################################
+
+Validation should always improve or converge, both in # of outer steps and # of inner steps. However in e.g. run 6 we see that it collapses after a few inner steps and never recovers.
+
+Look at run 6 nc23, which has horizon_length = 20.
+For the first chunk validation improves monotonically to 72% for the first 7 outer steps, then oscillates to reach max on outer step 18 at 79%. At this point learning rate schedule is constant at 0.25 except for last 2 values that decay to 0.13. Momentum is constant at ~ 0.1 and weight decay is ~ 0.0. After than learning rates keep growing and val accuracy drops. At outer step #50 it is already at 65% and one lr is already being capped at 10. By outer step 300 we have decayed to 32% and values are all over the place:
+
+LR:  ['0.035', '0.04', '0.74', '0.77', '0.06', '0.01', '0.08', '0.00', '0.01', '0.08', '0.03', '10', '0.00', '0.33', '0.70', '4.55', '0.57', '6.32', '2.66', '2.27']
+	MOM:  ['0.00', '0.11', '0.01', '0.00', '0.44', '0.01', '0.01', '0.00', '0.00', '0.03', '0.02', '0.06', '1.24', '2.86', '0.02', '0.01', '0.02', '0.07', '0.10', '0.00']
+	WD:  ['0.00001', '0.00001', '0.00001', '0.00009', '0.00001', '0.00003', '0.00005', '0.00021', '0.00003', '0.00002', '0.00001', '0.00017', '0.0026', '0.0059', '0.00007', '0.0224', '0.0072', '0.0', '0.0', '0.0']
+
+After that we start chunk 2 which manages to get the accuracy up before collapsing again. Other seeds also peak early but don't drop in val acc by that much, and it takes >120 steps for one lr to reach 10 and drop to 50%.
+
+Why does hypertraining diverge like this? Ideally if we were to take lots of outer steps per chunk the hyperparameters would converge. The fact that they don't may mean that our gradients have awful signal and we just happen to cross good schedules as we slowly scale values up from zero, because they are easy to find.
+
+This is a very different behaviour than that observed in normal training, where the training accuracy only goes down for a handful of batches. This could suggest that the hyper loss function has a much higher curvature and therefore is harder to optimize for.
+
+--- Does the collapse happen for short or long horizons?
+Observed for horizon = 5 and above for 300 outer steps, but not for smaller horizons and not all the time for h=5.
+
+--- Does this happen for a fixed train-validation split?
+Yes
+
+--- Does this happen without BN?
+Weirdly there is no lr diverging to high values with BN
+
+--- Does this happen for very few of many validation images?
+
+
+
+---
+Solution could be to keep learning rates from best val accs every time but then we take the risk of reducing stochasticity, as was observed in line search baselines where no batches were kept since none would lower the validation loss. However in the real hyperoptimization the validation set is different for each outer step so we wouldn't have that problem.
+
+#####################################################
+######## VAL < TEST ACC (SOLVED)
+#####################################################
+run6 nc23 has much lower validation accuracy than test accuracy which could be confusing.
+However when n_chunks > 1 test and validation accuracies measure different things, since the validation at inner step k and outer step v uses all the final outer step states from previous inner steps, while test acc at outer step v uses outer step v from all the previous inner steps. This makes it easier to collapse val than test, because one bad final outer_step for one inner_step can collapse all the following steps, but that's not the case for the test accs. The intermediate test accs don't really show anything meaningful when n_chunks > 1
+
+
+
+#####################################################
+######## LOSS DECREASES BUT ACC DECREASES (SOLVED)
+#####################################################
+
+No BN, outer lr 0.01
+
+chunk 1/23 -- outer_step_idx 13/100
+[0, 2, 3, 4, 6, 7, 11, 12, 14, 16, 17, 20, 21, 23, 24, 25, 26, 29, 31, 33, 35, 37, 38, 45, 47, 48, 49, 50, 56, 57, 59, 60, 61, 62, 64, 65, 67, 74, 77, 79, 80, 82, 85, 93, 95, 98, 100, 101, 103, 105, 109, 110, 116, 120, 121, 122, 123, 124, 127]
+['0.168', '0.137', '0.141', '0.186', '0.192', '0.213', '0.169', '0.202', '0.204', '0.198', '0.208', '0.156', '0.202', '0.205', '0.178', '0.148', '0.146', '0.142', '0.156', '0.205', '0.151', '0.195', '0.128', '0.206', '0.145', '0.128', '0.203', '0.152', '0.155', '0.175', '0.187', '0.155', '0.126', '0.140', '0.141', '0.155', '0.150', '0.143', '0.150', '0.130', '0.201', '0.192', '0.150', '0.170', '0.161', '0.142', '0.223', '0.148', '0.145', '0.169', '0.166', '0.206', '0.187', '0.138', '0.215', '0.160', '0.203', '0.140', '0.133']
+VALIDATION ACC BEFORE: 46.09%
+	LR GRADS:  ['-0.872', '-1.631', '-2.040', '-2.210', '-2.303', '-2.340', '-2.385', '-2.449', '-2.507', '-2.563', '-2.636', '-2.725', '-2.733', '-2.769', '-2.786', '-2.808', '-2.857', '-2.965', '-3.189', '-3.516']
+	LR      :  ['0.021', '0.038', '0.050', '0.058', '0.064', '0.070', '0.074', '0.078', '0.082', '0.084', '0.087', '0.090', '0.092', '0.095', '0.097', '0.101', '0.104', '0.108', '0.114', '0.120']
+[5, 19, 40, 46, 55, 58, 63, 72, 76, 81, 90, 96, 97, 107, 108, 117, 126]
+['0.140', '0.143', '0.139', '0.126', '0.125', '0.124', '0.141', '0.125', '0.135', '0.126', '0.137', '0.145', '0.127', '0.136', '0.128', '0.133', '0.125']
+VALIDATION ACC AFTER: 13.28%
+VALIDATION LOSS DELTA: 0.35094
+
+chunk 1/23 -- outer_step_idx 14/100
+[4, 5, 22, 24, 29, 31, 37, 38, 42, 43, 45, 48, 53, 54, 58, 59, 76, 85, 86, 87, 93, 95, 96, 98, 115, 116, 118, 122, 123]
+['0.988', '0.990', '0.978', '0.503', '0.716', '0.991', '0.988', '0.858', '0.990', '0.848', '0.992', '0.990', '0.744', '0.995', '0.991', '0.984', '0.932', '0.997', '0.994', '0.981', '0.987', '0.996', '0.919', '0.902', '0.995', '0.997', '0.996', '0.593', '0.990']
+VALIDATION ACC BEFORE: 22.66%
+	LR GRADS:  ['-31.606', '-44.757', '-69.815', '-68.961', '-68.423', '-65.413', '-67.783', '-66.800', '-69.276', '-70.614', '-70.119', '-69.917', '-75.723', '-79.771', '-84.670', '-64.924', '-42.824', '-125.140', '-21.129', '34.493']
+	LR      :  ['0.337', '0.485', '0.748', '0.748', '0.748', '0.724', '0.752', '0.746', '0.774', '0.790', '0.788', '0.790', '0.849', '0.893', '0.944', '0.750', '0.532', '1.360', '0.325', '0.000']
+[24, 29, 38, 43, 53, 98, 122]
+['0.117', '0.117', '0.117', '0.116', '0.117', '0.117', '0.117']
+VALIDATION ACC AFTER: 5.47%
+VALIDATION LOSS DELTA: -3.68647
+
+
+nans after this point
+--------
+
+Somehow some schedule can make the network very confident (high loss despite okay accuracy) and then an even higher lr schedule makes all outputs equal so not great accuracy (10% if we had very large val set) but big drop in loss due to less confidence.
+This is related to the inefficiency of bilevel optimization which takes steps that are too big.
+
+
+#####################################################
+######## DIFFERENT HYPERGRADS FOR DICE AND CDT (SOLVED)
+#####################################################
+
+FahsionMNIST has mean hypergrads around 6 for all nc when ilr=0 on dice and cpu.
+Same code on cdt cluster has mean around -1.8.
+
+SVHN on cpu and dice has mean ~ -0.6 for all nc.
+on cdtcluster we get ~ -0.2
+
+Pytorch version? CUDA version? Doubt cuda matters since cpu doesn't use it.
+CPU and DICE on Pytorch 1.2, CDT on Pytorch 1.1
+
+Try locally:
+conda create --name pytorch110 --clone pytorch
+conda activate pytorch110
+install conda install pytorch-cpu==1.1.0 torchvision-cpu==0.3.0 cpuonly -c pytorch
+--> needs torchvision 0.3 instead of 0.4
+--> get the same results as cdt! So version 1.1 is to blame, which is the one we ran all our code on.
+
+Try v1.5
+conda create --name pytorch150 --clone pytorch
+conda install pytorch torchvision cpuonly -c pytorch
+--> same results as 1.2 on FashionMNIST
+
+
+1.2 on cdtcluster:
+conda install pytorch==1.2.0 torchvision==0.4.0 cudatoolkit=9.2 -c pytorch
+- need cuda 9.2 for Pytorch 1.2, may need to change CUDA path in scripts
+install does..
+cudatoolkit: 9.0-h13b8566_0 --> 9.2.0
+cudnn: 7.6.0-cuda9.0_0 --> 7.6.5-cuda
+
+SOLVED:
+Get same hypergrads without batch norm.
+They changed the batch norm init function in 1.2, initializing gamma to all 1s rather than U(0,1).
+This is enough to change hypergradients quite drastically, making them x3 times larger.
+
+
+
+#####################################################
+######## RUN 24 vs RUN 43/45 learn from zero behaviour different (solved)
+#####################################################
+
+- run24 good, run43/45 too slow
+- mom and weight decayed applied differently. Run24 explicitely detaches velocity when doing update, which is probably useless.
+- run 43 has greedy code which complexifies hypergrad update but should be equivalent.
+- run 43 has higher hypergrads (-100 to -600) than run 24 (0 to -25) and yet run 24 makes much bigger jumps in lr space.
+
+
+→ because max_change_thresh wrongly set in run 43/45

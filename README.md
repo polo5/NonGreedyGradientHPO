@@ -1,2 +1,2 @@
-# NonGreedyGradientHPO
-Gradient based learning of hyperparameters without greed
+# GreedyGrad
+Find the best optimization step with a bilevel optimization scheme

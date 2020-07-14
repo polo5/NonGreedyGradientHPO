@@ -60,17 +60,18 @@ class MetaLearner(object):
     def hypers_init(self):
         """ initialize hyperparameters """
 
-        lrs = self.args.inner_lr_init*torch.ones(self.args.n_lrs)
-        self.inner_lrs = torch.tensor(lrs, requires_grad=self.args.learn_lr, device=self.args.device)
+        lrs = self.args.inner_lr_init*torch.ones(self.args.n_lrs, device=self.args.device)
+        self.inner_lrs = lrs.clone().detach().requires_grad_(True)
 
-        moms = self.args.inner_mom_init*torch.ones(self.args.n_moms)
-        self.inner_moms = torch.tensor(moms, requires_grad=self.args.learn_mom, device=self.args.device)
+        moms = self.args.inner_mom_init*torch.ones(self.args.n_moms, device=self.args.device)
+        self.inner_moms = moms.clone().detach().requires_grad_(True)
 
-        wds = self.args.inner_wd_init*torch.ones(self.args.n_wds)
-        self.inner_wds = torch.tensor(wds, requires_grad=self.args.learn_wd, device=self.args.device)
+        wds = self.args.inner_wd_init*torch.ones(self.args.n_wds, device=self.args.device)
+        self.inner_wds = wds.clone().detach().requires_grad_(True)
 
     def outer_optimizer_init(self):
         """ define which inner variables to meta learn """
+
         to_optimize = []
         if self.args.learn_lr: to_optimize.append(self.inner_lrs)
         if self.args.learn_mom: to_optimize.append(self.inner_moms)
@@ -79,6 +80,7 @@ class MetaLearner(object):
 
     def get_hypers(self, epoch):
         """return hyperparameters to be used for given epoch"""
+
         lr_index = int(epoch * self.args.n_lrs / self.args.n_epochs_per_run)
         lr = float(self.inner_lrs[lr_index])
 
@@ -92,6 +94,7 @@ class MetaLearner(object):
 
     def log_epoch_init(self):
         """init moving average metrics to log over one epoch"""
+
         self.running_train_loss, self.running_train_acc = AggregateTensor(), AggregateTensor()
         self.running_val_loss, self.running_val_acc = AggregateTensor(), AggregateTensor()
         if self.args.use_gpu: torch.cuda.reset_max_memory_allocated(device=None) #reset max gpu memory seen
@@ -138,11 +141,11 @@ class MetaLearner(object):
 
     def clip_hypergrads(self):
         """
-        Tricky: sometimes we get very small hyper grads but they are very high quality
-        since computed over lots of epochs. Sometimes we get super large hypergrads
-        but they suck since some step exploded. So we can't just 'clip' hypergrads 
-        within a fixed range.  
-        :return: 
+        Clip hypergrads adaptively, based on percentage of
+        current hyperparameter value, with an exemption when
+        that value is very small.
+        TODO: this is maximally convenient and helps debugging but is likely
+        an overkill and a much simpler clipping should work as well in most cases.
         """
         with torch.no_grad():
 
@@ -189,6 +192,9 @@ class MetaLearner(object):
                             self.inner_wds.grad[idx] = grad_bound
 
     def inner_loop(self):
+        """
+        Compute Z for each hyperparameter to learn over all epochs in the run
+        """
 
         ## Network
         self.classifier = select_model(True, self.args.dataset, self.args.architecture,
@@ -217,7 +223,6 @@ class MetaLearner(object):
         else:
             Z_wd = None
 
-
         ## Inner Loop Over All Epochs
         for epoch in range(self.args.n_epochs_per_run):
             t0_epoch = time.time()
@@ -225,7 +230,6 @@ class MetaLearner(object):
             lr, mom, wd, lr_index, mom_index, wd_index = self.get_hypers(epoch)
 
             for batch_idx, (x_train, y_train) in enumerate(self.train_loader):
-                #t0_batch = time.time()
                 x_train, y_train = x_train.to(device=self.args.device), y_train.to(device=self.args.device)
                 train_logits = self.classifier.forward_with_param(x_train, self.weights)
                 train_loss = self.cross_entropy(train_logits, y_train)
@@ -282,19 +286,23 @@ class MetaLearner(object):
 
                     Z_wd = A_times_Z + B
 
-                ## SGD update
+                ## SGD inner update
                 self.weights.detach_(), grads.detach_()
                 velocity = velocity*mom + (grads + wd*self.weights)
                 self.weights = self.weights - lr*velocity
                 self.weights.requires_grad_()
 
-            print(f'--- Ran epoch {epoch} in {format_time(time.time()-t0_epoch)} ---')
+            print(f'--- Ran epoch {epoch+1} in {format_time(time.time()-t0_epoch)} ---')
             if log_this_epoch: self.log_epoch(epoch)
-
 
         return Z_lr, Z_mom, Z_wd
 
     def outer_loop(self, run_idx, Z_lr_final, Z_mom_final, Z_wd_final):
+        """
+        Calculate hypergradients and update hyperparameters accordingly.
+        TODO: divide hypergrad by number of steps to allow any number of steps.
+        Would probably requires adjusting the outer learning rate to be bigger.
+        """
 
         ## Calculate validation gradients with final weights of inner loop
         self.running_val_grad = AggregateTensor()
@@ -308,17 +316,17 @@ class MetaLearner(object):
         ## Calculate hypergrads
         print('')
         if self.args.learn_lr:
-            self.inner_lrs.grad = self.running_val_grad.avg() @ Z_lr_final / self.n_batches_per_lr
+            self.inner_lrs.grad = self.running_val_grad.avg() @ Z_lr_final #/ self.n_batches_per_lr
             self.all_lr_raw_grads[run_idx] = self.inner_lrs.grad.detach()
             print('RAW LR GRADS: ', [float(i) for i in self.inner_lrs.grad])
         
         if self.args.learn_mom:
-            self.inner_moms.grad = self.running_val_grad.avg() @ Z_mom_final / self.n_batches_per_mom
+            self.inner_moms.grad = self.running_val_grad.avg() @ Z_mom_final #/ self.n_batches_per_mom
             self.all_mom_raw_grads[run_idx] = self.inner_moms.grad.detach()
             print('RAW MOM GRADS: ', [float(i) for i in self.inner_moms.grad])
         
         if self.args.learn_wd:
-            self.inner_wds.grad = self.running_val_grad.avg() @ Z_wd_final / self.n_batches_per_mom
+            self.inner_wds.grad = self.running_val_grad.avg() @ Z_wd_final #/ self.n_batches_per_mom
             self.all_wd_raw_grads[run_idx] = self.inner_wds.grad.detach()
             print('RAW WD GRADS: ', [float(i) for i in self.inner_wds.grad])
         
@@ -342,8 +350,9 @@ class MetaLearner(object):
         self.clip_hypers()
 
     def run(self):
+        """ Run meta learning experiment """
 
-        for run_idx in range(self.args.n_runs):
+        for run_idx in range(self.args.n_runs): # number of outer steps
 
             ## Logging
             self.log_this_run = (run_idx % self.args.run_log_freq == 0 or run_idx==self.args.n_runs-1)
@@ -374,10 +383,10 @@ class MetaLearner(object):
                                                                                 workers=self.args.workers,
                                                                                 train_infinite=False,
                                                                                 val_infinite=False)
-            self.n_batches_per_lr = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_lrs
-            self.n_batches_per_mom = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_moms
-            self.n_batches_per_wd = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_wds
-            print(self.n_batches_per_lr, self.n_batches_per_mom, self.n_batches_per_wd)
+            #self.n_batches_per_lr = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_lrs
+            #self.n_batches_per_mom = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_moms
+            #self.n_batches_per_wd = len(self.train_loader) * self.args.n_epochs_per_run / self.args.n_wds
+            #print(self.n_batches_per_lr, self.n_batches_per_mom, self.n_batches_per_wd)
 
             ## Update Hypers
             Z_lr_final, Z_mom_final, Z_wd_final = self.inner_loop()
@@ -398,7 +407,7 @@ class MetaLearner(object):
         return avg_test_acc
 
     def validate(self, weights, fraction=1.0):
-        """ fraction allows trading accuracy for speed when logging many times"""
+        """ Fraction allows trading accuracy for speed when logging many times"""
         self.classifier.eval()
         running_acc, running_loss = AggregateTensor(), AggregateTensor()
 
@@ -416,7 +425,7 @@ class MetaLearner(object):
         return float(running_loss.avg()), float(running_acc.avg())
 
     def test(self, weights, fraction=1.0):
-        """ fraction allows trading accuracy for speed when logging many times"""
+        """ Fraction allows trading accuracy for speed when logging many times"""
         self.classifier.eval()
         running_acc, running_loss = AggregateTensor(), AggregateTensor()
 
@@ -453,7 +462,8 @@ class MetaLearner(object):
 
 class BaseLearner(object):
     """
-    Train from scratch using whole training set + standard Pytorch architectures
+    Retrain from scratch using learned schedule and
+    whole training set
     """
     def __init__(self, args, lr_schedule, mom_schedule, wd_schedule, log_name):
         self.args = args
@@ -475,9 +485,9 @@ class BaseLearner(object):
                                                                             val_infinite=False)
 
         ## Optimizer
-        self.classifier = select_model(False, self.args.dataset, self.args.architecture, self.args.activation,
-                               self.args.norm_type, self.args.norm_affine, self.args.noRes,
-                               self.args.init_type, self.args.init_param, self.args.init_norm_weights).to(self.args.device)
+        self.classifier = select_model(False, self.args.dataset, self.args.architecture,
+                               self.args.init_type, self.args.init_param,
+                               self.args.device).to(self.args.device)
         self.optimizer = optim.SGD(self.classifier.parameters(), lr=0.0, momentum=0.0, weight_decay=0.0) #set hypers manually later
         self.cross_entropy = nn.CrossEntropyLoss()
 
@@ -574,16 +584,20 @@ class BaseLearner(object):
 # ________________________________________________________________________________
 
 def make_experiment_name(args):
+    """
+    Warning: Windows can have a weird behaviour for long filenames.
+    Protip: switch to Ubuntu ;)
+    """
 
     ## Main
     experiment_name = f'FSL_{args.dataset}_{args.architecture}_nr{args.n_runs}_nepr{args.n_epochs_per_run}'
-    if args.learn_lr: experiment_name += f'_learn{args.n_lrs}lrs-p{args.lr_max_percentage_change}-t{args.lr_max_change_thresh}'
-    if args.learn_mom: experiment_name += f'_learn{args.n_moms}moms-p{args.mom_max_percentage_change}-t{args.mom_max_change_thresh}'
-    if args.learn_wd: experiment_name += f'_learn{args.n_wds}wds-p{args.wd_max_percentage_change}-t{args.wd_max_change_thresh}'
+    if args.learn_lr: experiment_name += f'_learn{args.n_lrs}lrs'#-p{args.lr_max_percentage_change}-t{args.lr_max_change_thresh}'
+    if args.learn_mom: experiment_name += f'_learn{args.n_moms}moms'#-p{args.mom_max_percentage_change}-t{args.mom_max_change_thresh}'
+    if args.learn_wd: experiment_name += f'_learn{args.n_wds}wds'#-p{args.wd_max_percentage_change}-t{args.wd_max_change_thresh}'
 
 
     ## inner/outer init
-    experiment_name += f'_init{args.init_type}-{args.init_param}'
+    #experiment_name += f'_init{args.init_type}-{args.init_param}'
     experiment_name += f'_tbs{args.train_batch_size}'
     experiment_name += f'_ilr{args.inner_lr_init}_imom{args.inner_mom_init}_iwd{args.inner_wd_init}'
     experiment_name += f'_olr{args.outer_lr_init}_omom{args.outer_momentum}'
@@ -633,7 +647,7 @@ def main(args):
 
 
         ## Retrain Best Val
-        print(f'\n\n\n---------- RETRAINING FROM SCRATCH WITH BEST SCHEDULE (idx {best_idx}) ----------')
+        print(f'\n\n\n---------- RETRAINING FROM SCRATCH WITH BEST VAL SCHEDULE (idx {best_idx}) ----------')
         print(f'lrs = {best_lr_schedule.tolist()}')
         print(f'moms = {best_mom_schedule.tolist()}')
         print(f'wds = {best_wd_schedule.tolist()}')
@@ -663,7 +677,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_moms', type=int, default=2)
     parser.add_argument('--n_wds', type=int, default=2)
     parser.add_argument('--dataset', type=str, default='MNIST')
-    parser.add_argument('--n_runs', type=int, default=2, help='number of full training runs. n_runs/run_log_freq folders will be created')
+    parser.add_argument('--n_runs', type=int, default=3, help='number of full training runs. n_runs/run_log_freq folders will be created')
     parser.add_argument('--n_epochs_per_run', type=int, default=2, help='number of epochs to run before updating all learning rates')
 
     ## Architecture
@@ -673,9 +687,9 @@ if __name__ == "__main__":
     parser.add_argument('--init_norm_weights', type=float, default=1, help='init gammas of BN')
 
     ## Inner Loop
-    parser.add_argument('--inner_lr_init', type=float, default=0.1, help='SGD inner learning rate init')
-    parser.add_argument('--inner_mom_init', type=float, default=0.5, help='SGD inner momentum init')
-    parser.add_argument('--inner_wd_init', type=float, default=5e-4, help='SGD inner weight decay init')
+    parser.add_argument('--inner_lr_init', type=float, default=0, help='SGD inner learning rate init')
+    parser.add_argument('--inner_mom_init', type=float, default=0, help='SGD inner momentum init')
+    parser.add_argument('--inner_wd_init', type=float, default=0, help='SGD inner weight decay init')
     parser.add_argument('--train_batch_size', type=int, default=512)
 
     ## Outer Loop
@@ -701,8 +715,8 @@ if __name__ == "__main__":
     parser.add_argument('--clamp_grads_range', type=float, default=3, help='clamp inner grads for each batch to +/- that')
 
     ## Other
-    parser.add_argument('--retrain_from_scratch', type=str2bool, default=False, help='retrain from scratch with learned lr schedule')
-    parser.add_argument('--retrain_n_epochs', type=int, default=4, help='interpolates from learned schedule, -1 for same as n_epochs_per_run')
+    parser.add_argument('--retrain_from_scratch', type=str2bool, default=True, help='retrain from scratch with learned lr schedule')
+    parser.add_argument('--retrain_n_epochs', type=int, default=-1, help='interpolates from learned schedule, -1 for same as n_epochs_per_run')
     parser.add_argument('--datasets_path', type=str, default="/home/paul/Datasets/Pytorch/")
     parser.add_argument('--log_directory_path', type=str, default="./logs/")
     parser.add_argument('--epoch_log_freq', type=int, default=1, help='every how many epochs to save summaries')
